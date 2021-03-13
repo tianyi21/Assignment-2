@@ -24,7 +24,7 @@ function find_result(row)
 	if row[:white_result] == "win"
 		return [row[:white_username], row[:black_username]]
 	elseif row[:black_result] == "win"
-		return [row[:black_username], row[:black_username]]
+		return [row[:black_username], row[:white_username]]
 	else
 		return nothing
 	end
