@@ -16,6 +16,9 @@ using Zygote: gradient
 # ╔═╡ 615c1994-836f-11eb-3d3e-af2f4b7b7d80
 using CSV, DataFrames
 
+# ╔═╡ e0025ae6-88d4-11eb-3ea7-57f725aa991b
+using Random
+
 # ╔═╡ 6c6b0aa6-82b2-11eb-3114-25412fb07e27
 md"""
 # Assignment 2: Variational Inference in the TrueSkill model
@@ -125,7 +128,6 @@ md"""
 # ╔═╡ 237e7586-8351-11eb-0810-8b09c322cf0c
 function log_prior(zs)
 	#TODO
-	zs = zs'
     return sum(log(1 / √(2 * π)) .+ (- zs .^ 2 ./ 2), dims=2)
 end
 
@@ -138,7 +140,6 @@ end
 # ╔═╡ cdc987cc-8358-11eb-118f-0f4d7ca2e040
 function all_games_log_likelihood(zs,games)
 	#TODO
-	zs = zs'
 	zs_a = zs[:, games[1,:]]
  	#TODO
 	zs_b = zs[:, games[2,:]]
@@ -190,21 +191,23 @@ two_player_toy_games(5,3)
 
 # ╔═╡ 5681e80e-835c-11eb-3e50-e32d41cb1ddb
 function skillcontour!(f; colour=nothing)
-  n = 100
-  x = range(-3,stop=3,length=n)
-  y = range(-3,stop=3,length=n)
-  z_grid = Iterators.product(x,y) # meshgrid for contour
-  z_grid = reshape.(collect.(z_grid),:,1) # add single batch dim
-  z = f.(z_grid)
-  z = getindex.(z,1)'
-  max_z = maximum(z)
-  levels = [.99, 0.9, 0.8, 0.7,0.6,0.5, 0.4, 0.3, 0.2] .* max_z
-  if colour==nothing
-  p1 = contour!(x, y, z, fill=false, levels=levels)
-  else
-  p1 = contour!(x, y, z, fill=false, c=colour,levels=levels,colorbar=false)
-  end
-  plot!(p1)
+  	n = 100
+  	x = range(-3,stop=3,length=n)
+  	y = range(-3,stop=3,length=n)
+  	z_grid = Iterators.product(x,y) # meshgrid for contour
+	# modified for dim convention
+  	# z_grid = reshape.(collect.(z_grid),:,1) # add single batch dim
+	z_grid = reshape.(collect.(z_grid),1,:) # add single batch dim
+  	z = f.(z_grid)
+  	z = getindex.(z,1)'
+  	max_z = maximum(z)
+  	levels = [.99, 0.9, 0.8, 0.7,0.6,0.5, 0.4, 0.3, 0.2] .* max_z
+  	if colour==nothing
+  		p1 = contour!(x, y, z, fill=false, levels=levels)
+  	else
+  		p1 = contour!(x, y, z, fill=false, c=colour,levels=levels,colorbar=false)
+  	end
+  	plot!(p1)
 end
 
 # ╔═╡ 5617427e-835c-11eb-1ae3-ed0e13b24fe3
@@ -243,7 +246,7 @@ end
 # TODO: plot likelihood contours
 begin
 	plot() # Clear previous plot
-	skillcontour!(zs -> exp.(logp_i_beats_j(zs[1,:],zs[2,:])))
+	skillcontour!(zs -> exp.(logp_i_beats_j(zs[:,1],zs[:,2])))
 	plot_line_equal_skill!()
 	title!("Isocontours of likelihood")
 	xlabel!("Player A")
@@ -314,7 +317,7 @@ function batchwise_gaussian_loglikelihood(params, samples)
 	x = samples
 	μ = params[1]
 	σ = exp.(params[2])
-	return sum(log.(1 ./ (2 * π * σ .^ 2) .^ 0.5) .+ (-0.5 * ((x .- μ) ./ σ) .^ 2), dims=1)
+	return sum(log.(1 ./ (2 * π * σ .^ 2) .^ 0.5) .+ (-0.5 * ((x .- μ) ./ σ) .^ 2), dims=1)'
 end
 
 # ╔═╡ 3a7ce2aa-8382-11eb-2029-f97ac18d1f97
@@ -323,10 +326,9 @@ function elbo(params,logp,num_samples)
 	#size(samples) = N × batch size
 	samples = params[1] .+ exp.(params[2]) .* randn((size(params[1])[1], num_samples))
 	#TODO 
-	#Notes: logp here refers to logp_tilde in lecture
-  	logp_estimate = logp(samples)
+  	logp_estimate = logp(samples')
   	#TODO
-	logq_estimate = batchwise_gaussian_loglikelihood(params, samples)'
+	logq_estimate = batchwise_gaussian_loglikelihood(params, samples)
   	#TODO: should return scalar (hint: average over batch)
 	return sum(logp_estimate - logq_estimate) / num_samples
 end
@@ -334,42 +336,43 @@ end
 # ╔═╡ 09d97bd2-835e-11eb-2545-3b34186ea79d
 # Conveinence function for taking gradients 
 function neg_elbo(params; games = two_player_toy_games(1,0), num_samples = 100)
-  # TODO: Write a function that takes parameters for q, 
-  # evidence as an array of game outcomes,
-  # and returns the -elbo estimate with num_samples many samples from q
-  logp(zs) = joint_log_density(zs,games)
-  return -elbo(params,logp,num_samples)
+  	# TODO: Write a function that takes parameters for q, 
+  	# evidence as an array of game outcomes,
+  	# and returns the -elbo estimate with num_samples many samples from q
+  	logp(zs) = joint_log_density(zs,games)
+  	return -elbo(params,logp,num_samples)
 end
 
 # ╔═╡ 4491de6a-8382-11eb-3c4f-f3edbbd8b6d9
 function learn_and_vis_toy_variational_approx(init_params, toy_evidence; num_itrs=200, lr= 1e-2, num_q_samples = 10)
-  params_cur = init_params 
-  p_return = 0
-  for i in 1:num_itrs
-	#TODO: gradients of variational objective with respect to parameters
-    grad_params = gradient(dparams -> neg_elbo(dparams, games=toy_evidence, num_samples=num_q_samples), params_cur)
-	#TODO: update paramters with lr-sized step in descending gradient
-    params_cur = params_cur .- lr .* grad_params[1]
-    #TODO: report the current elbbo during training
-	loss = neg_elbo(params_cur, games=toy_evidence, num_samples=num_q_samples)
-	@info "iter: $i / $num_itrs \t $loss"
-    # TODO: plot true posterior in red and variational in blue
-    # hint: call 'display' on final plot to make it display during training
-    p = plot();
-	title!("Variational Approximation @ iter $i");
-	xlabel!("Player A");
-	ylabel!("Player B");
-    #TODO: skillcontour!(...,colour=:red) plot likelihood contours for target posterior
-	display(skillcontour!(zs -> exp.(joint_log_density(zs,toy_evidence)), colour=:red));
-    # plot_line_equal_skill()
-	plot_line_equal_skill!();
-    #TODO: display(skillcontour!(..., colour=:blue)) plot likelihood contours for variational posterior
-	display(skillcontour!(zs -> exp.(batchwise_gaussian_loglikelihood(params_cur, zs)), colour=:blue));
-	if i == num_itrs
-		p_return = p
-	end
-  end
-  return params_cur, p_return
+  	params_cur = init_params 
+  	p_return = 0
+  	loss = 1e6
+  	for i in 1:num_itrs
+		#TODO: gradients of variational objective with respect to parameters
+    	grad_params = gradient(dparams -> neg_elbo(dparams, games=toy_evidence, num_samples=num_q_samples), params_cur)
+		#TODO: update paramters with lr-sized step in descending gradient
+    	params_cur = params_cur .- lr .* grad_params[1]
+    	#TODO: report the current elbbo during training
+		loss = neg_elbo(params_cur, games=toy_evidence, num_samples=num_q_samples)
+		@info "iter: $i / $num_itrs \t $loss"
+    	# TODO: plot true posterior in red and variational in blue
+    	# hint: call 'display' on final plot to make it display during training
+    	p = plot();
+		title!("Variational Approximation @ iter $i");
+		xlabel!("Player A");
+		ylabel!("Player B");
+    	#TODO: skillcontour!(...,colour=:red) plot likelihood contours for target posterior
+		display(skillcontour!(zs -> exp.(joint_log_density(zs,toy_evidence)), colour=:red));
+    	# plot_line_equal_skill()
+		plot_line_equal_skill!();
+    	#TODO: display(skillcontour!(..., colour=:blue)) plot likelihood contours for variational posterior
+		display(skillcontour!(zs -> exp.(batchwise_gaussian_loglikelihood(params_cur, zs')), colour=:blue));
+		if i == num_itrs
+			p_return = p
+		end
+  	end
+  	return params_cur, p_return, loss
 end
 
 # ╔═╡ a5b747c8-8363-11eb-0dcf-2311ebef4a2a
@@ -395,7 +398,7 @@ toy_mu = randn(2)
 
 # ╔═╡ bc156e4a-8382-11eb-2fec-797f286ae96c
 # toy_ls = [0.5,0.] # Initual log_sigma, can initialize randomly!
-toy_ls = abs.(randn(2))
+toy_ls = randn(2)
 
 # ╔═╡ bc160bac-8382-11eb-11be-57f2f3484921
 toy_params_init = (toy_mu, toy_ls)
@@ -404,7 +407,7 @@ toy_params_init = (toy_mu, toy_ls)
 begin
 	#1
 	#TODO: fit q with SVI observing player A winning 1 game
-	params1, p1 = learn_and_vis_toy_variational_approx(toy_params_init, two_player_toy_games(1,0), num_itrs=600, num_q_samples=100)
+	params1, p1, loss1 = learn_and_vis_toy_variational_approx(toy_params_init, two_player_toy_games(1,0), num_itrs=600, num_q_samples=100)
 	#TODO: save final posterior plots
 	savefig("./plots/toy_svi_1.pdf")
 	plot(p1)
@@ -412,14 +415,16 @@ end
 
 # ╔═╡ 7d825c10-865c-11eb-134c-5db0fd345363
 md"""
-loss @ 600 iter = 0.7198825060878185
+A, B = (1,0)
+
+loss @ 600 iter = $loss1
 """
 
 # ╔═╡ 5588835a-8365-11eb-01bf-dba9289b3f59
 begin
 	#2
 	#TODO: fit q with SVI observing player A winning 10 games
-	params2, p2 = learn_and_vis_toy_variational_approx(toy_params_init, two_player_toy_games(10,0), num_itrs=600, num_q_samples=100)
+	params2, p2, loss2 = learn_and_vis_toy_variational_approx(toy_params_init, two_player_toy_games(10,0), num_itrs=600, num_q_samples=100)
 	#TODO: save final posterior plots
 	savefig("./plots/toy_svi_10.pdf")
 	plot(p2)
@@ -427,14 +432,16 @@ end
 
 # ╔═╡ 98e16a8c-865c-11eb-379e-97ab69c11569
 md"""
-loss @ 600 iter = 2.998496469381333
+A, B = (10, 0)
+
+loss @ 600 iter = $loss2
 """
 
 # ╔═╡ 56d3d372-8365-11eb-21f8-b941b23056e1
 begin
 	#3
 	#TODO: fit q with SVI observing player A winning 10 games and player B winning 10 games
-	params3, p3 = learn_and_vis_toy_variational_approx(toy_params_init, two_player_toy_games(10,10), num_itrs=600, num_q_samples=100)
+	params3, p3, loss3 = learn_and_vis_toy_variational_approx(toy_params_init, two_player_toy_games(10,10), num_itrs=600, num_q_samples=100)
 	#TODO: save final posterior plots
 	savefig("./plots/toy_svi_10_20.pdf")
 	plot(p3)
@@ -442,7 +449,9 @@ end
 
 # ╔═╡ 9af08448-865c-11eb-2867-0b78d90c17ce
 md"""
-loss @ 600 iter = 15.575504347931444
+A, B = (10, 10)
+
+loss @ 600 iter = $loss3
 """
 
 # ╔═╡ 61baa2fa-8365-11eb-1d51-cb9ba987cb00
@@ -518,97 +527,100 @@ Hint: consider the graphical model for three players, $i,j,k$ and condition on r
 """
 
 # ╔═╡ fdb40492-8738-11eb-0cd4-29e04fa02c3a
-function learn_variational_approx(init_params, tennis_games; num_itrs=200, lr= 1e-2, num_q_samples = 10, mbsgd=true)
-  	params_cur = init_params
-	losses = []
+begin
 	bs = 16384
-	lr_decay_mb = 20
-	lr_decay_fb = 80
-	tic_base = time()
-	
-	if mbsgd == true
-		# for mini-batch SGD
-		losses_b = []
-		data_loader = [tennis_games[:, i:min(i + bs - 1, end)] for i in 1:bs:size(tennis_games)[2]]
-		steps = size(data_loader)[1]
-		@info "Start training with mini-batch SGD\n\tbs=$bs Σit=$num_itrs Σst=$steps lr=$lr ld=$lr_decay_mb #q=$num_q_samples"
-	else
-		# for full-batch SGD
-		@info "Start training with full-batch SGD\n\tΣit=$num_itrs lr=$lr ld=$lr_decay_mb #q=$num_q_samples"
-	end
-	
-	# training loop
-  	for i in 1:num_itrs
-		# mini-batch SGD
+	lr_decay_mb = 25
+	lr_decay_fb = 40
+	function learn_variational_approx(init_params, tennis_games; num_itrs=200, lr= 1e-2, num_q_samples = 10, mbsgd=true)
+		params_cur = init_params
+		losses = []
+		tic_base = time()
+
 		if mbsgd == true
-			
-			# lr scheduler
-			if (i - 1) % lr_decay_mb == 0 && i != 1
-				if lr > 1e-4
-					@info "iter: $i\tlearning rate decays from $lr to $(lr * 0.1)"
-					lr *= 0.1
-				elseif lr > 1e-5
-					@info "iter: $i\tlearning rate decays from $lr to $(lr * 0.5)"
-					lr *= 0.5
+			# for mini-batch SGD
+			losses_b = []
+			tennis_games = tennis_games[:, shuffle!(collect(1:size(tennis_games)[2]))]
+			data_loader = [tennis_games[:, i:min(i + bs - 1, end)] for i in 1:bs:size(tennis_games)[2]]
+			steps = size(data_loader)[1]
+			@info "Start training with mini-batch SGD\n\tbs=$bs Σit=$num_itrs Σst=$steps lr=$lr ld=$lr_decay_mb #q=$num_q_samples"
+		else
+			# for full-batch GD
+			@info "Start training with full-batch GD\n\tΣit=$num_itrs lr=$lr ld=$lr_decay_mb #q=$num_q_samples"
+		end
+
+		# training loop
+		for i in 1:num_itrs
+			# mini-batch SGD
+			if mbsgd == true
+
+				# lr scheduler
+				if (i - 1) % lr_decay_mb == 0 && i != 1
+					if lr > 1e-4
+						@info "iter: $i\tlearning rate decays from $lr to $(lr * 0.2)"
+						lr *= 0.2
+					elseif lr > 1e-5
+						@info "iter: $i\tlearning rate decays from $lr to $(lr * 0.5)"
+						lr *= 0.5
+					end
 				end
-			end
-			
-			loss_batch = 0
-			# iter over data loader
-			for (step, batch) in enumerate(data_loader)
+
+				loss_batch = 0
+				# iter over data loader
+				for (step, batch) in enumerate(data_loader)
+					tic = time()
+					#TODO: gradients of variational objective wrt params
+					grad_params = gradient(dparams -> neg_elbo(dparams, games=batch, num_samples=num_q_samples), params_cur)
+					#TODO: update parmaeters wite lr-sized steps in desending gradient direction
+					params_cur = params_cur .- lr .* grad_params[1]
+					#TODO: save objective value with current parameters
+					loss_mb = neg_elbo(params_cur, games=batch, num_samples=num_q_samples)
+					loss_batch += loss_mb * size(batch)[2]
+					push!(losses, loss_mb)
+
+					toc = time()
+					eta = convert(Int, round((toc - tic_base) / ((i - 1) * steps + step) * ((num_itrs - i) * steps + steps - step), digits=0))
+					@info "iter: $i / $num_itrs\tstep: $step / $steps\tloss: $(round(loss_mb, digits=8))\ttime: $(round(toc - tic, digits=4)) s	ETA: $eta s"
+				end
+
+				loss_b = loss_batch / size(tennis_games)[2]
+				push!(losses_b, loss_b)
+				@info "====================EPOCH SUMMARY====================\n\titer: $i loss average over iteration: $(round(loss_b, digits=8))\n==========================================================="
+			else
+				# full-batch GD
+
+				# lr scheduler
+				if (i - 1) % lr_decay_fb == 0 && i != 1
+					if lr > 1e-4
+						@info "iter: $i\tlearning rate decays from $lr to $(lr * 0.2)"
+						lr *= 0.2
+					elseif lr > 1e-5
+						@info "iter: $i\tlearning rate decays from $lr to $(lr * 0.5)"
+						lr *= 0.5
+					end
+				end
+
 				tic = time()
 				#TODO: gradients of variational objective wrt params
-				grad_params = gradient(dparams -> neg_elbo(dparams, games=batch, num_samples=num_q_samples), params_cur)
+				grad_params = gradient(dparams -> neg_elbo(dparams, games=tennis_games, num_samples=num_q_samples), params_cur)
 				#TODO: update parmaeters wite lr-sized steps in desending gradient direction
 				params_cur = params_cur .- lr .* grad_params[1]
 				#TODO: save objective value with current parameters
-				loss_mb = neg_elbo(params_cur, games=tennis_games, num_samples=num_q_samples)
-				loss_batch += loss_mb * size(batch)[2]
-				push!(losses, loss_mb)
-				
+				log_loss = neg_elbo(params_cur, games=tennis_games, num_samples=num_q_samples)
+				push!(losses, log_loss)
 				toc = time()
-				eta = convert(Int, round((toc - tic_base) / ((i - 1) * steps + step) * ((num_itrs - i) * steps + steps - step), digits=0))
-				@info "iter: $i / $num_itrs\tstep: $step / $steps\tloss: $(round(loss_mb, digits=8))\ttime: $(round(toc - tic, digits=4)) s	ETA: $eta s"
+				eta = convert(Int, round((toc - tic_base) / i * (num_itrs - i), digits=0))
+				@info "iter: $i / $num_itrs\tloss: $(round(log_loss, digits=8))\ttime: $(round(toc - tic, digits=4)) s	ETA: $eta s"
 			end
-			
-			loss_b = loss_batch / size(tennis_games)[2]
-			push!(losses_b, loss_b)
-			@info "====================EPOCH SUMMARY====================\n\titer: $i loss average over iteration: $(round(loss_b, digits=8))\n==========================================================="
-		else
-			# full-batch SGD
-			
-			# lr scheduler
-			if (i - 1) % lr_decay_fb == 0 && i != 1
-				if lr > 1e-4
-					@info "iter: $i\tlearning rate decays from $lr to $(lr * 0.1)"
-					lr *= 0.1
-				elseif lr > 1e-5
-					@info "iter: $i\tlearning rate decays from $lr to $(lr * 0.5)"
-					lr *= 0.5
-				end
-			end
-			
-			tic = time()
-			#TODO: gradients of variational objective wrt params
-			grad_params = gradient(dparams -> neg_elbo(dparams, games=tennis_games, num_samples=num_q_samples), params_cur)
-			#TODO: update parmaeters wite lr-sized steps in desending gradient direction
-    		params_cur = params_cur .- lr .* grad_params[1]
-			#TODO: save objective value with current parameters
-    		log_loss = neg_elbo(params_cur, games=tennis_games, num_samples=num_q_samples)
-			push!(losses, log_loss)
-			toc = time()
-			eta = convert(Int, round((toc - tic_base) / i * (num_itrs - i), digits=0))
-			@info "iter: $i / $num_itrs\tloss: $(round(log_loss, digits=8))\ttime: $(round(toc - tic, digits=4)) s	ETA: $eta s"
 		end
-  	end
-	
-	toc_base = time()
-	@info "Total training time: $(round(toc_base - tic_base, digits=4)) s"
-	
-	if mbsgd == true
-  		return params_cur, losses, losses_b
-	else
-		return params_cur, losses
+
+		toc_base = time()
+		@info "Total training time: $(round(toc_base - tic_base, digits=4)) s"
+
+		if mbsgd == true
+			return params_cur, losses, losses_b
+		else
+			return params_cur, losses
+		end
 	end
 end
 
@@ -628,7 +640,7 @@ begin
 	#3
 	# TODO: Initialize variational family
 	init_mu = randn(size(names)[1])
-	init_log_sigma = abs.(randn(size(names)[1]))
+	init_log_sigma = randn(size(names)[1])
 	init_params = (init_mu, init_log_sigma) # random initialziation
 end
 
@@ -639,15 +651,15 @@ md"""
 
 # ╔═╡ a34a1b64-8384-11eb-2e9f-0de11f1cfd4d
 # mini-batch SGD
-params, losses, losses_b = learn_variational_approx(init_params, games, lr=2e-3, num_itrs=60, num_q_samples=100, mbsgd=true)
+params, losses, losses_b = learn_variational_approx(init_params, games, lr=5e-3, num_itrs=50, num_q_samples=100, mbsgd=true)
 
 # ╔═╡ b7517222-8798-11eb-1f01-e7e2ccf46da3
 #4
 #TODO plot losses during ELBO optimization and report final loss
 begin
 	plot(collect(1:size(losses)[1]), losses, label="loss")
-	plot!(18 * collect(1:size(losses_b)[1]), losses_b, label="avg batch loss")
-	vline!([360, 720], color=:green, label=false)
+	plot!(ceil(size(games)[2] / bs) * collect(1:size(losses_b)[1]), losses_b, label="epoch loss")
+	vline!([450], color=:green, label="lr decay step")
 	title!("Training curve of mini-batch SGD")
 	xlabel!("Step")
 	ylabel!("Loss")
@@ -662,14 +674,23 @@ begin
 end
 
 # ╔═╡ bc623c38-8798-11eb-30e2-55cbcbe80cc7
-# rank of liverpoolborn
+# ranks
+findfirst(i -> i == "camillab", names[perm])
+
+# ╔═╡ 4d7bffa2-88d3-11eb-2630-5f5afaaf792d
 findfirst(i -> i == "liverpoolborn", names[perm])
+
+# ╔═╡ 509a6fa2-88d3-11eb-1026-212dc1a9faeb
+findfirst(i -> i == "meri-arabidze", names[perm])
+
+# ╔═╡ 53175a6c-88d3-11eb-069a-69c8707af3d1
+findfirst(i -> i == "sylvanaswindrunner", names[perm])
 
 # ╔═╡ be4acff6-8798-11eb-336f-893554de98d7
 #6
 #TODO: plot mean and variance of all players, sorted by skill
 begin
-	plot(params[1][perm], yerror=exp.(params[2][perm]), label="mean skills")
+	plot(params[1][perm], ribbon=exp.(params[2][perm]), label="mean skills")
 	title!("Mean Skill")
 	xlabel!("Player")
 	ylabel!("Skill")
@@ -677,45 +698,45 @@ end
 
 # ╔═╡ b0f21314-8798-11eb-3ce5-1bd192f44afe
 md"""
-### Full-batch SGD
+### Full-batch GD
 """
 
 # ╔═╡ a3639a1a-8787-11eb-17c8-e3a5cc645291
-# full-batch SGD
-params_fb, losses_fb = learn_variational_approx(init_params, games, lr=5e-4, num_itrs=240, num_q_samples=100, mbsgd=false)
+# full-batch GD
+# params_fb, losses_fb = learn_variational_approx(init_params, games, lr=5e-4, num_itrs=240, num_q_samples=100, mbsgd=false)
 
 # ╔═╡ b5dc532a-8384-11eb-244e-556e2769179e
 #4
 #TODO plot losses during ELBO optimization and report final loss
-begin
-	plot(collect(1:size(losses_fb)[1]), losses_fb, label="loss")
-	vline!([80,160], color=:red, label=false)
-	title!("Training curve of mini-batch SGD")
-	xlabel!("Step")
-	ylabel!("Loss")
-end
+# begin
+#	plot(collect(1:size(losses_fb)[1]), losses_fb, label="loss")
+#	vline!([80,160], color=:red, label=false)
+#	title!("Training curve of mini-batch SGD")
+#	xlabel!("Step")
+#	ylabel!("Loss")
+#end
 
 # ╔═╡ c0dfaff6-8384-11eb-2661-b5e6c137b25b
 #5 
 #TODO: sort players by mean skill under our moidel and list top 10 players.
-begin
-	perm_fb = sortperm(params_fb[1], rev=true)
-	cat(names[perm_fb[1:10]], params_fb[1][perm_fb[1:10]], dims=2)
-end
+#begin
+#	perm_fb = sortperm(params_fb[1], rev=true)
+#	cat(names[perm_fb[1:10]], params_fb[1][perm_fb[1:10]], dims=2)
+#end
 
 # ╔═╡ 3dad2d94-8702-11eb-0500-5f042231fc1d
 # rank of liverpoolborn
-findfirst(i -> i == "liverpoolborn", names[perm_fb])
+#findfirst(i -> i == "liverpoolborn", names[perm_fb])
 
 # ╔═╡ efce7f36-8384-11eb-2499-19ffdb51451f
 #6
 #TODO: plot mean and variance of all players, sorted by skill
-begin
-	plot(params_fb[1][perm_fb], ribbon=exp.(params_fb[2][perm_fb]), label="mean skills")
-	title!("Mean Skill")
-	xlabel!("Player")
-	ylabel!("Skill")
-end
+#begin
+#	plot(params_fb[1][perm_fb], ribbon=exp.(params_fb[2][perm_fb]), label="mean skills")
+#	title!("Mean Skill")
+#	xlabel!("Player")
+#	ylabel!("Skill")
+#end
 
 # ╔═╡ f1e54852-836d-11eb-1847-13ab95054446
 md"""
@@ -781,7 +802,7 @@ begin
 	μ_cl = [params[1][camillab], params[1][liverpoolborn]]
 	log_σ_cl = [params[2][camillab], params[2][liverpoolborn]]
 	plot_line_equal_skill!();
-	skillcontour!(zs -> exp.(batchwise_gaussian_loglikelihood((μ_cl, log_σ_cl), zs)))
+	skillcontour!(zs -> exp.(batchwise_gaussian_loglikelihood((μ_cl, log_σ_cl), zs')))
 	title!("Posterior over camillab and liverpoolborn")
 	xlabel!("camillab")
 	ylabel!("liverpoolborn")
@@ -805,7 +826,7 @@ begin
 	μ_ms = [params[1][meri_arabidze], params[1][sylvanaswindrunner]]
 	log_σ_ms = [params[2][meri_arabidze], params[2][sylvanaswindrunner]]
 	plot_line_equal_skill!();
-	skillcontour!(zs -> exp.(batchwise_gaussian_loglikelihood((μ_ms, log_σ_ms), zs)))
+	skillcontour!(zs -> exp.(batchwise_gaussian_loglikelihood((μ_ms, log_σ_ms), zs')))
 	title!("Posterior over meri_arabidze and sylvanaswindrunner")
 	xlabel!("meri_arabidze")
 	ylabel!("sylvanaswindrunner")
@@ -863,8 +884,9 @@ end
 # ╠═68d993cc-836f-11eb-2df1-c53cd5ea6ed4
 # ╠═aa156070-8372-11eb-3d8c-4946a3e32d36
 # ╟─4e914c4a-8369-11eb-369e-af5416995cb8
+# ╠═e0025ae6-88d4-11eb-3ea7-57f725aa991b
 # ╠═fdb40492-8738-11eb-0cd4-29e04fa02c3a
-# ╟─55c28bc6-8384-11eb-0c2c-0d4188f8eda3
+# ╠═55c28bc6-8384-11eb-0c2c-0d4188f8eda3
 # ╟─56d9f98c-8667-11eb-2d11-cdfd9b85f7a4
 # ╠═6af25166-8384-11eb-24d9-85aed2d14ee2
 # ╟─a4797780-8798-11eb-00f6-f10c56d0eba1
@@ -872,6 +894,9 @@ end
 # ╠═b7517222-8798-11eb-1f01-e7e2ccf46da3
 # ╠═b9dc8efa-8798-11eb-284b-fd2944df6fb8
 # ╠═bc623c38-8798-11eb-30e2-55cbcbe80cc7
+# ╠═4d7bffa2-88d3-11eb-2630-5f5afaaf792d
+# ╠═509a6fa2-88d3-11eb-1026-212dc1a9faeb
+# ╠═53175a6c-88d3-11eb-069a-69c8707af3d1
 # ╠═be4acff6-8798-11eb-336f-893554de98d7
 # ╟─b0f21314-8798-11eb-3ce5-1bd192f44afe
 # ╠═a3639a1a-8787-11eb-17c8-e3a5cc645291
