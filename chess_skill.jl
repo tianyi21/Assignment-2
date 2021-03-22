@@ -665,6 +665,16 @@ begin
 	ylabel!("Loss")
 end
 
+# ╔═╡ e4effe58-8aac-11eb-136c-ef1930594d42
+md"""
+The final loss over the whole dataset (accumlated over mini-batches and averaged in an epoch): $(losses_b[size(losses_b)[1]]);
+
+The final loss of the last mini-batch, whose size $\neq$ batch size: $(losses[size(losses)[1]]);
+
+The final loss of the second last mini-batch, whose size $=$ batch size: $(losses[size(losses)[1] - 1]);
+
+"""
+
 # ╔═╡ b9dc8efa-8798-11eb-284b-fd2944df6fb8
 #5 
 #TODO: sort players by mean skill under our moidel and list top 10 players.
@@ -686,6 +696,11 @@ findfirst(i -> i == "meri-arabidze", names[perm])
 # ╔═╡ 53175a6c-88d3-11eb-069a-69c8707af3d1
 findfirst(i -> i == "sylvanaswindrunner", names[perm])
 
+# ╔═╡ a12ec1b2-8aab-11eb-1585-bfad101015f5
+md"""
+Results Interpretation: $\texttt{liverpoolborn}$ and $\texttt{sylvanaswindrunner}$ are in the top-10 list of the learned model. This makes sense, since one of them is the one who has the highest winning rate, and $\texttt{sylvanaswindrunner}$ is one of the few who is ranked high by chess.com. However, the highest-ranked player $\texttt{meri-arabidze}$ is not in the top-10 list. If the chess.com ranking makes sense, this indicates that we learned a local minima. Nevertheless, after re-training the model for quite a few time, the results are similar. 
+"""
+
 # ╔═╡ be4acff6-8798-11eb-336f-893554de98d7
 #6
 #TODO: plot mean and variance of all players, sorted by skill
@@ -698,7 +713,7 @@ end
 
 # ╔═╡ b0f21314-8798-11eb-3ce5-1bd192f44afe
 md"""
-### Full-batch GD
+### Full-batch GD (deprecated)
 """
 
 # ╔═╡ a3639a1a-8787-11eb-17c8-e3a5cc645291
@@ -892,11 +907,13 @@ end
 # ╟─a4797780-8798-11eb-00f6-f10c56d0eba1
 # ╠═a34a1b64-8384-11eb-2e9f-0de11f1cfd4d
 # ╠═b7517222-8798-11eb-1f01-e7e2ccf46da3
+# ╟─e4effe58-8aac-11eb-136c-ef1930594d42
 # ╠═b9dc8efa-8798-11eb-284b-fd2944df6fb8
 # ╠═bc623c38-8798-11eb-30e2-55cbcbe80cc7
 # ╠═4d7bffa2-88d3-11eb-2630-5f5afaaf792d
 # ╠═509a6fa2-88d3-11eb-1026-212dc1a9faeb
 # ╠═53175a6c-88d3-11eb-069a-69c8707af3d1
+# ╟─a12ec1b2-8aab-11eb-1585-bfad101015f5
 # ╠═be4acff6-8798-11eb-336f-893554de98d7
 # ╟─b0f21314-8798-11eb-3ce5-1bd192f44afe
 # ╠═a3639a1a-8787-11eb-17c8-e3a5cc645291
