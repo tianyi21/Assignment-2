@@ -25,7 +25,8 @@ md"""
 
 - Name: Tianyi Liu
 - StudentNumber: 1005820827
-- Collaborators:
+- Collaborators: Lazar Atanackovic, Phil Fradkin
+
 
 ## Goal
 
@@ -60,9 +61,6 @@ In their assignment they implement and utilize a Gibbs sampling method for appro
 We will not implement an MCMC sampling method, instead using SVI for our approximate inference.
 
 """
-
-# ╔═╡ 41161f12-8406-11eb-289a-e7399f630ad1
-
 
 # ╔═╡ 225c993e-82b2-11eb-3322-31a522cc8594
 md"""
@@ -630,9 +628,9 @@ end
 
 # ╔═╡ 56d9f98c-8667-11eb-2d11-cdfd9b85f7a4
 md"""
-#1 YES: Since the normalizing factor is constant.
+#1 YES.
 
-#2 YES: Since given zs the results are considered as independent.
+#2 YES.
 """
 
 # ╔═╡ 6af25166-8384-11eb-24d9-85aed2d14ee2
@@ -695,11 +693,6 @@ findfirst(i -> i == "meri-arabidze", names[perm])
 
 # ╔═╡ 53175a6c-88d3-11eb-069a-69c8707af3d1
 findfirst(i -> i == "sylvanaswindrunner", names[perm])
-
-# ╔═╡ a12ec1b2-8aab-11eb-1585-bfad101015f5
-md"""
-Results Interpretation: $\texttt{liverpoolborn}$ and $\texttt{sylvanaswindrunner}$ are in the top-10 list of the learned model. This makes sense, since one of them is the one who has the highest winning rate, and $\texttt{sylvanaswindrunner}$ is one of the few who is ranked high by chess.com. However, the highest-ranked player $\texttt{meri-arabidze}$ is not in the top-10 list. If the chess.com ranking makes sense, this indicates that we learned a local minima. Nevertheless, after re-training the model for quite a few time, the results are similar. 
-"""
 
 # ╔═╡ be4acff6-8798-11eb-336f-893554de98d7
 #6
@@ -851,14 +844,13 @@ end
 #4
 # TODO: use Simple Monte Carlo to estimate probability player A is better
 begin
-	z_meri_arabidze = randn(N) * exp(log_σ_cl[1]) .+ μ_cl[1] 
-	z_sylvanaswindrunner = randn(N) * exp(log_σ_cl[2]) .+ μ_cl[2] 
+	z_meri_arabidze = randn(N) * exp(log_σ_ms[1]) .+ μ_ms[1] 
+	z_sylvanaswindrunner = randn(N) * exp(log_σ_ms[2]) .+ μ_ms[2] 
 	count(z_meri_arabidze .< z_sylvanaswindrunner) / N
 end
 
 # ╔═╡ Cell order:
 # ╟─6c6b0aa6-82b2-11eb-3114-25412fb07e27
-# ╟─41161f12-8406-11eb-289a-e7399f630ad1
 # ╟─225c993e-82b2-11eb-3322-31a522cc8594
 # ╠═17feea80-8354-11eb-2662-094b31e3fe15
 # ╟─ce219a64-8350-11eb-37aa-1d156db00ce3
@@ -913,7 +905,6 @@ end
 # ╠═4d7bffa2-88d3-11eb-2630-5f5afaaf792d
 # ╠═509a6fa2-88d3-11eb-1026-212dc1a9faeb
 # ╠═53175a6c-88d3-11eb-069a-69c8707af3d1
-# ╟─a12ec1b2-8aab-11eb-1585-bfad101015f5
 # ╠═be4acff6-8798-11eb-336f-893554de98d7
 # ╟─b0f21314-8798-11eb-3ce5-1bd192f44afe
 # ╠═a3639a1a-8787-11eb-17c8-e3a5cc645291
